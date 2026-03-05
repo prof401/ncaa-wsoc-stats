@@ -76,19 +76,6 @@ See [architecture.md](architecture.md) for full schemas and workflow.
 - Session-based requests with an initial visit to establish cookies
 - Winning Percentage (stat_seq=60) used as the seed ranking stat
 
-## Pushing to GitHub
-
-Create a new repository on GitHub, then:
-
-```bash
-git init
-git add .
-git commit -m "Initial commit: NCAA WSOC scraper"
-git branch -M main
-git remote add origin https://github.com/owner/ncaa-wsoc-stats.git  # use your repo URL
-git push -u origin main
-```
-
 ## License
 
 MIT
