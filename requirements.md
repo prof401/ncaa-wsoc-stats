@@ -4,7 +4,7 @@
 The goal is to build a robust scraper to retrieve and store NCAA Women's Soccer data from 2019-present, specifically capturing teams and their contest histories.
 
 ## Data Sources
-- **Primary Seed:** `https://stats.ncaa.org/rankings/national_ranking` (Targeting stat_seq=60.0 for Winning Percentage as a catch-all list).
+- **Primary Seed:** `https://stats.ncaa.org/rankings/change_sport_year_div` (entry point, no ranking_period) followed by `https://stats.ncaa.org/rankings/national_ranking` (stat_seq=60 for Winning Percentage). The ranking_period is extracted from the change_sport_year_div page.
 - **Secondary Source:** `https://stats.ncaa.org/teams/<team_id>` for metadata and schedules.
 
 ## Functional Requirements
