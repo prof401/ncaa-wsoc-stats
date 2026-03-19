@@ -18,7 +18,7 @@
 | `season` | The academic year (e.g., 2023-24). |
 | `division` | NCAA Division (1, 2, or 3). |
 | `coach` | Head coach name. |
-| `conference` | The conference name the team played in that year. |
+| `overall_record` | Team overall W-L(-D) record for that season. |
 
 ### Table 2: `contests.csv`
 | Column | Description |

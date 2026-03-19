@@ -69,6 +69,42 @@ def fetch_team_page(session: requests.Session, team_id: str) -> str:
     return resp.text
 
 
+def _extract_overall_record(soup: BeautifulSoup) -> str:
+    """Extract overall record text from team summary cards/labels."""
+    def _normalize_record(value: str) -> str:
+        match = re.search(r"\b\d+-\d+(?:-\d+)?\b", value or "")
+        return match.group(0) if match else value.strip()
+
+    # Current NCAA card layout: card-header "Overall" + card-body first <span>.
+    for header in soup.find_all("div", class_="card-header"):
+        if header.get_text(" ", strip=True).lower() == "overall":
+            body = header.find_next_sibling("div", class_="card-body")
+            if body:
+                span = body.find("span")
+                if span:
+                    return _normalize_record(span.get_text(" ", strip=True))
+
+    # Common layout: <dt>Overall</dt><dd>10-2-3</dd>
+    for dt in soup.find_all("dt"):
+        label = dt.get_text(" ", strip=True).lower()
+        if "overall" in label and "record" in label:
+            dd = dt.find_next_sibling("dd")
+            if dd:
+                return _normalize_record(dd.get_text(" ", strip=True))
+        elif label == "overall":
+            dd = dt.find_next_sibling("dd")
+            if dd:
+                return _normalize_record(dd.get_text(" ", strip=True))
+
+    # Fallback: explicit "Overall Record" text in card details.
+    text = soup.get_text(" ", strip=True)
+    match = re.search(r"overall\s+record[:\s]+([0-9]+(?:-[0-9]+){1,2})", text, re.I)
+    if match:
+        return _normalize_record(match.group(1).strip())
+
+    return ""
+
+
 def extract_team_metadata(
     soup: BeautifulSoup, team_id: str, season: str | None = None, division: int = 1
 ) -> dict[str, Any]:
@@ -87,14 +123,14 @@ def extract_team_metadata(
         division: NCAA division (1, 2, or 3).
 
     Returns:
-        Dict with team_id, name, coach, season, conference, division.
+        Dict with team_id, name, coach, season, overall_record, division.
     """
     result: dict[str, Any] = {
         "team_id": team_id,
         "name": "",
         "coach": "",
         "season": season or "",
-        "conference": "",
+        "overall_record": "",
         "division": division,
     }
 
@@ -125,6 +161,8 @@ def extract_team_metadata(
                         else name_dd.get_text(strip=True)
                     )
             break
+
+    result["overall_record"] = _extract_overall_record(soup)
 
     return result
 

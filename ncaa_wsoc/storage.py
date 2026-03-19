@@ -7,16 +7,39 @@ from typing import Any
 TEAMS_CSV = "teams.csv"
 CONTESTS_CSV = "contests.csv"
 
-TEAMS_COLUMNS = ["team_id", "name", "season", "division", "coach", "conference"]
+TEAMS_COLUMNS = ["team_id", "name", "season", "division", "coach", "overall_record"]
 CONTESTS_COLUMNS = ["contest_id", "team_id", "opponent_id", "result", "attendance", "date"]
 
 
 def _ensure_file(path: Path, columns: list[str]) -> None:
-    """Create file with header if it doesn't exist."""
+    """Create file with header if missing, or migrate legacy header."""
     if not path.exists():
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=columns)
             writer.writeheader()
+        return
+
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        existing_columns = reader.fieldnames or []
+        if existing_columns == columns:
+            return
+        rows = list(reader)
+
+    migrated_rows: list[dict[str, Any]] = []
+    for row in rows:
+        migrated = {k: row.get(k, "") for k in columns}
+        # Legacy teams.csv used conference; map it forward when needed.
+        if "overall_record" in columns and not migrated.get("overall_record"):
+            migrated["overall_record"] = row.get("overall_record") or row.get(
+                "conference", ""
+            )
+        migrated_rows.append(migrated)
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(migrated_rows)
 
 
 def load_known_team_ids(teams_path: Path | str | None = None) -> set[str]:

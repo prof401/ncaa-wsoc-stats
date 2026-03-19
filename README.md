@@ -5,7 +5,7 @@ A Python scraper for NCAA Women's Soccer data from [stats.ncaa.org](https://stat
 ## Features
 
 - **Initial discovery:** Fetches team IDs from the National Rankings page for any season and division
-- **Team metadata:** Extracts name, coach, conference from each team page
+- **Team metadata:** Extracts name, coach, overall record from each team page
 - **Contest extraction:** Scrapes Schedule/Results table (date, opponent, result, attendance)
 - **Discovery queue:** Automatically adds opponent teams found in schedules
 - **Robust requests:** Uses minimal headers (User-Agent, Referer) to avoid HTTP 406/403 errors
@@ -81,7 +81,7 @@ python main.py --limit 3
 ## Data Flow
 
 1. **Seed:** Fetch team IDs from National Rankings (`change_sport_year_div` → `national_ranking`)
-2. **Team pages:** Visit each team to extract metadata (name, coach, conference) and schedule
+2. **Team pages:** Visit each team to extract metadata (name, coach, overall record) and schedule
 3. **Discovery:** Add opponent teams found in schedules to the crawl queue
 4. **Output:** Write `teams.csv` and `contests.csv`
 
