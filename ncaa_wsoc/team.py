@@ -171,6 +171,12 @@ def _extract_coach_name_from_card_body(card_body: Any) -> str:
     return ""
 
 
+def _is_coach_section_header(header_text: str) -> bool:
+    """True for summary cards titled Coach or Coaches (NCAA uses both)."""
+    t = header_text.strip().lower()
+    return t in ("coach", "coaches")
+
+
 def extract_team_metadata(
     soup: BeautifulSoup, team_id: str, season: str | None = None, division: int = 1
 ) -> dict[str, Any]:
@@ -213,9 +219,9 @@ def extract_team_metadata(
             if opt:
                 result["season"] = opt.get_text(strip=True)
 
-    # Coach: card-header "Coach" -> card-body -> one or more <dd> (mid-year change)
+    # Coach: card-header "Coach" or "Coaches" -> card-body (see _is_coach_section_header)
     for header in soup.find_all(class_="card-header"):
-        if header.get_text(strip=True) == "Coach":
+        if _is_coach_section_header(header.get_text(strip=True)):
             card_body = header.find_next_sibling(class_="card-body")
             if card_body:
                 result["coach"] = _extract_coach_name_from_card_body(card_body)
