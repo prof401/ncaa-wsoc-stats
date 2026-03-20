@@ -21,6 +21,9 @@
 | `overall_record` | Team overall W-L(-D) record for that season. |
 
 ### Table 2: `contests.csv`
+
+Canceled games (any schedule row whose cells indicate a cancellation) are omitted.
+
 | Column | Description |
 | :--- | :--- |
 | `contest_id` | Unique ID for the specific game. |

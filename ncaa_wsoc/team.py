@@ -105,6 +105,51 @@ def _extract_overall_record(soup: BeautifulSoup) -> str:
     return ""
 
 
+def _short_name_from_header(header: Any) -> str:
+    """School short name from logo_image alt text in a card-header."""
+    img = header.find("img", class_="logo_image")
+    if not img:
+        return ""
+    alt = (img.get("alt") or "").strip()
+    if not alt or alt.upper() == "NCAA":
+        return ""
+    return alt
+
+
+def _extract_team_name(soup: BeautifulSoup) -> str:
+    """
+    Short team name: NCAA almost always puts it in the banner logo alt next to
+    the athletics link. That is the single consistent source when present.
+
+    Order:
+      1. logo_image alt in the same .card-header as <a target="ATHLETICS_URL">
+      2. Text of that athletics link (often longer; used only if alt missing)
+      3. Heuristic: first early .card-header with logo_image (rare if markup
+         changes).
+    """
+    athletics = soup.find("a", target="ATHLETICS_URL")
+
+    if athletics:
+        header = athletics.find_parent("div", class_="card-header")
+        if header:
+            alt = _short_name_from_header(header)
+            if alt:
+                return alt
+        link_text = athletics.get_text(strip=True)
+        if link_text:
+            return link_text
+
+    for card in soup.find_all("div", class_="card", limit=40):
+        ch = card.find("div", class_="card-header")
+        if not ch:
+            continue
+        alt = _short_name_from_header(ch)
+        if alt:
+            return alt
+
+    return ""
+
+
 def extract_team_metadata(
     soup: BeautifulSoup, team_id: str, season: str | None = None, division: int = 1
 ) -> dict[str, Any]:
@@ -112,7 +157,9 @@ def extract_team_metadata(
     Extract team metadata from the NCAA stats team page.
 
     Page structure (confirmed from live HTML):
-      - Team name: <a target="ATHLETICS_URL"> inside .card-header
+      - Team name (short): <img class="logo_image" alt="…"> in the .card-header
+        that contains <a target="ATHLETICS_URL">; else that link's text; else
+        rare heuristic: first early .card-header with a logo_image
       - Season: selected <option> in <select id="year_list">
       - Coach: .card-header text=="Coach" -> sibling .card-body -> first <dd> <a>
 
@@ -134,10 +181,7 @@ def extract_team_metadata(
         "division": division,
     }
 
-    # Team name: <a target="ATHLETICS_URL">Utah Tech Trailblazers</a>
-    athletics_link = soup.find("a", target="ATHLETICS_URL")
-    if athletics_link:
-        result["name"] = athletics_link.get_text(strip=True)
+    result["name"] = _extract_team_name(soup)
 
     # Season: selected option in <select id="year_list">
     if not result["season"]:
@@ -165,6 +209,19 @@ def extract_team_metadata(
     result["overall_record"] = _extract_overall_record(soup)
 
     return result
+
+
+# Match cancel / canceled / cancelled / canceling / cancellation in schedule cells
+_CANCELLED_RE = re.compile(r"\bcancel(?:led|ed|ing|lation)?\b", re.I)
+
+
+def _row_is_canceled_game(cells: list[Any]) -> bool:
+    """True if the schedule row represents a canceled/postponement-canceled game."""
+    for cell in cells:
+        text = cell.get_text(" ", strip=True)
+        if _CANCELLED_RE.search(text):
+            return True
+    return False
 
 
 def extract_contests(soup: BeautifulSoup, team_id: str) -> list[dict[str, Any]]:
@@ -250,6 +307,9 @@ def extract_contests(soup: BeautifulSoup, team_id: str) -> list[dict[str, Any]]:
                 contest["attendance"] = cells[col_map["attendance"]].get_text(
                     strip=True
                 )
+
+            if _row_is_canceled_game(cells):
+                continue
 
             # Only add if we have meaningful data
             if contest["date"] or contest["opponent_id"] or contest["result"]:
