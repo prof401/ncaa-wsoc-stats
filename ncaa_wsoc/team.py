@@ -150,6 +150,27 @@ def _extract_team_name(soup: BeautifulSoup) -> str:
     return ""
 
 
+def _extract_coach_name_from_card_body(card_body: Any) -> str:
+    """
+    Coach name from the Coach summary card body.
+
+    Multiple <dd> rows appear when there was a mid-season change. The first
+    linked coach name in document order is used (season-start coach when the
+    site lists chronologically). If no links exist, the first non-empty <dd>
+    text is used.
+    """
+    for dd in card_body.find_all("dd"):
+        for a in dd.find_all("a"):
+            name = a.get_text(strip=True)
+            if name:
+                return name
+    for dd in card_body.find_all("dd"):
+        name = dd.get_text(strip=True)
+        if name:
+            return name
+    return ""
+
+
 def extract_team_metadata(
     soup: BeautifulSoup, team_id: str, season: str | None = None, division: int = 1
 ) -> dict[str, Any]:
@@ -161,7 +182,8 @@ def extract_team_metadata(
         that contains <a target="ATHLETICS_URL">; else that link's text; else
         rare heuristic: first early .card-header with a logo_image
       - Season: selected <option> in <select id="year_list">
-      - Coach: .card-header text=="Coach" -> sibling .card-body -> first <dd> <a>
+      - Coach: .card-header text=="Coach" -> sibling .card-body -> <dd> rows;
+        first linked name (multiple rows when coaching changed mid-season)
 
     Args:
         soup: Parsed team page HTML.
@@ -191,19 +213,12 @@ def extract_team_metadata(
             if opt:
                 result["season"] = opt.get_text(strip=True)
 
-    # Coach: card-header "Coach" -> card-body -> first dd (contains <a>Name</a>)
+    # Coach: card-header "Coach" -> card-body -> one or more <dd> (mid-year change)
     for header in soup.find_all(class_="card-header"):
         if header.get_text(strip=True) == "Coach":
             card_body = header.find_next_sibling(class_="card-body")
             if card_body:
-                name_dd = card_body.find("dd")
-                if name_dd:
-                    coach_link = name_dd.find("a")
-                    result["coach"] = (
-                        coach_link.get_text(strip=True)
-                        if coach_link
-                        else name_dd.get_text(strip=True)
-                    )
+                result["coach"] = _extract_coach_name_from_card_body(card_body)
             break
 
     result["overall_record"] = _extract_overall_record(soup)
