@@ -16,7 +16,7 @@ from .team import extract_contests, extract_team_metadata, fetch_team_page
 
 def run(
     season: int = 2024,
-    division: int = 1,
+    division: int = 3,
     dry_run: bool = False,
     output_dir: Path | str | None = None,
     delay_seconds: float = 1.0,
@@ -101,7 +101,7 @@ def main() -> None:
     parser.add_argument(
         "--division",
         type=int,
-        default=1,
+        default=3,
         choices=[1, 2, 3],
         help="NCAA division",
     )

@@ -12,7 +12,7 @@ from .http import create_session
 CHANGE_SPORT_URL = "https://stats.ncaa.org/rankings/change_sport_year_div"
 
 
-def build_rankings_url(season: int, division: int = 1) -> str:
+def build_rankings_url(season: int, division: int = 3) -> str:
     """
     Build the change_sport_year_div URL for a given season.
 
@@ -57,7 +57,7 @@ def _extract_national_ranking_url(html: str, stat_seq: int = 60) -> str | None:
 
 def fetch_rankings_page(
     season: int,
-    division: int = 1,
+    division: int = 3,
     stat_seq: int = 60,
     headers: dict | None = None,
     session: requests.Session | None = None,
@@ -123,7 +123,7 @@ def extract_team_ids(html: str) -> list[str]:
 
 def get_team_ids_for_season(
     season: int,
-    division: int = 1,
+    division: int = 3,
     delay_seconds: float = 1.0,
     session: requests.Session | None = None,
 ) -> list[str]:

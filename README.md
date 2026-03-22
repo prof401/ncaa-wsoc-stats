@@ -36,7 +36,7 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-# Full scrape: seed + team pages + contests (2024 D1 default)
+# Full scrape: seed + team pages + contests (2024 D3 default)
 python main.py
 
 # Specify season and division
@@ -54,7 +54,7 @@ python main.py --limit 3
 | Option | Default | Description |
 |--------|---------|--------------|
 | `--season` | 2024 | Season year (e.g., 2024 for 2024-25) |
-| `--division` | 1 | NCAA division (1, 2, or 3) |
+| `--division` | 3 | NCAA division (1, 2, or 3) |
 | `--dry-run` | — | Print URL only, do not fetch |
 | `--output-dir` | . | Directory for teams.csv and contests.csv |
 | `--delay` | 1.0 | Seconds between requests |

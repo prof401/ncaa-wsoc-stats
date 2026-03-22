@@ -240,7 +240,7 @@ def extract_division_from_ranking_summary(
 
 
 def extract_team_metadata(
-    soup: BeautifulSoup, team_id: str, season: str | None = None, division: int = 1
+    soup: BeautifulSoup, team_id: str, season: str | None = None, division: int = 3
 ) -> dict[str, Any]:
     """
     Extract team metadata from the NCAA stats team page.
@@ -258,7 +258,7 @@ def extract_team_metadata(
         soup: Parsed team page HTML.
         team_id: NCAA team ID.
         season: Academic year string (e.g., "2023-24"). Inferred from page if None.
-        division: Fallback NCAA division if the page has no ranking_summary link.
+        division: Fallback NCAA division if the page has no ranking_summary link (default 3).
 
     Returns:
         Dict with team_id, name, coach, season, overall_record, division.
