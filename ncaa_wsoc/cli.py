@@ -35,7 +35,7 @@ def run(
     """
     out = Path(output_dir or ".")
     teams_path = out / "teams.csv"
-    contests_path = out / "contests.csv"
+    contests_path = out / "contests_raw.csv"
 
     url = build_rankings_url(season, division)
     print(f"Rankings URL: {url}")
