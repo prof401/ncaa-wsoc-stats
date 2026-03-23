@@ -1,50 +1,15 @@
 """TeamProcessor: fetch team page, extract metadata and schedule."""
 
 import re
-import time
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
+from .http import fetch_stats_page
+
 TEAM_BASE_URL = "https://stats.ncaa.org/teams/"
-
-_INTERSTITIAL_SIGNAL = "/_sec/verify?provider=interstitial"
-_VERIFY_URL = "https://stats.ncaa.org/_sec/verify?provider=interstitial"
-
-
-def _solve_interstitial(session: requests.Session, html: str, team_url: str) -> bool:
-    """
-    Solve Akamai Bot Manager interstitial PoW challenge.
-
-    Extracts the bm-verify token and PoW values from the challenge HTML,
-    POSTs the answer to /_sec/verify, and updates session cookies.
-    Returns True if the POST succeeded (status < 400).
-    """
-    i_match = re.search(r"var i = (\d+);", html)
-    pow_match = re.search(r'Number\("(\d+)" \+ "(\d+)"\)', html)
-    token_match = re.search(
-        r'xhr\.send\(JSON\.stringify\(\{"bm-verify": "([^"]+)"', html
-    )
-
-    if not (i_match and pow_match and token_match):
-        return False
-
-    i_val = int(i_match.group(1))
-    pow_val = i_val + int(pow_match.group(1) + pow_match.group(2))
-    token = token_match.group(1)
-
-    try:
-        resp = session.post(
-            _VERIFY_URL,
-            json={"bm-verify": token, "pow": pow_val},
-            headers={"Content-Type": "application/json", "Referer": team_url},
-            timeout=15,
-        )
-        return resp.status_code < 400
-    except Exception:
-        return False
 
 
 def fetch_team_page(session: requests.Session, team_id: str) -> str:
@@ -59,16 +24,7 @@ def fetch_team_page(session: requests.Session, team_id: str) -> str:
         Raw HTML string.
     """
     url = f"{TEAM_BASE_URL}{team_id}"
-    resp = session.get(url, timeout=30)
-
-    if _INTERSTITIAL_SIGNAL in resp.text:
-        solved = _solve_interstitial(session, resp.text, url)
-        if solved:
-            time.sleep(1)
-            resp = session.get(url, timeout=30)
-
-    resp.raise_for_status()
-    return resp.text
+    return fetch_stats_page(session, url)
 
 
 # Banner line when NCAA still shows "School Mascot (W-L)" but removed ATHLETICS_URL / logo.

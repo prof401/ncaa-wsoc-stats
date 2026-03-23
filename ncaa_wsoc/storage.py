@@ -18,6 +18,20 @@ TEAMS_COLUMNS = [
 ]
 CONTESTS_COLUMNS = ["contest_id", "team_id", "opponent_id", "result", "attendance", "date"]
 
+SCORING_SUMMARY_DEFAULT = "scoring_summary.csv"
+SCORING_SUMMARY_COLUMNS = [
+    "contest_id",
+    "away_team_id",
+    "home_team_id",
+    "game_datetime",
+    "period",
+    "clock",
+    "scoring_team_id",
+    "play_text",
+    "away_score_after",
+    "home_score_after",
+]
+
 
 def _ensure_file(path: Path, columns: list[str]) -> None:
     """Create file with header if missing, or migrate legacy header."""
@@ -115,3 +129,41 @@ def append_contest(
     with open(path, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CONTESTS_COLUMNS, extrasaction="ignore")
         writer.writerow({k: row.get(k, "") for k in CONTESTS_COLUMNS})
+
+
+def load_scraped_contest_ids(scoring_path: Path | str | None = None) -> set[str]:
+    """
+    contest_id values already present in scoring summary CSV (any row).
+
+    Used for --skip-existing incremental scrapes.
+    """
+    path = Path(scoring_path or SCORING_SUMMARY_DEFAULT)
+    if not path.exists():
+        return set()
+
+    out: set[str] = set()
+    with open(path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames or "contest_id" not in reader.fieldnames:
+            return out
+        for row in reader:
+            cid = (row.get("contest_id") or "").strip()
+            if cid:
+                out.add(cid)
+    return out
+
+
+def append_scoring_rows(
+    rows: list[dict[str, Any]],
+    scoring_path: Path | str | None = None,
+) -> None:
+    """Append one or more scoring-summary rows; creates file with header if missing."""
+    path = Path(scoring_path or SCORING_SUMMARY_DEFAULT)
+    _ensure_file(path, SCORING_SUMMARY_COLUMNS)
+
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=SCORING_SUMMARY_COLUMNS, extrasaction="ignore"
+        )
+        for row in rows:
+            writer.writerow({k: row.get(k, "") for k in SCORING_SUMMARY_COLUMNS})
