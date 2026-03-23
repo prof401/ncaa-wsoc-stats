@@ -71,20 +71,90 @@ def fetch_team_page(session: requests.Session, team_id: str) -> str:
     return resp.text
 
 
+# Banner line when NCAA still shows "School Mascot (W-L)" but removed ATHLETICS_URL / logo.
+# Group 1 is the W-L(-T) fragment inside parentheses.
+_RECORD_SUFFIX_IN_PARENS = re.compile(
+    r"\s*\(\s*(\d+\s*-\s*\d+(?:\s*-\s*\d+)?)\s*\)\s*$"
+)
+# Same pattern allowed anywhere in the header (some pages append text after "(0-1)").
+_RECORD_IN_PARENS = re.compile(
+    r"\(\s*(\d+\s*-\s*\d+(?:\s*-\s*\d+)?)\s*\)"
+)
+
+# Hyphen / minus / en dash (NCAA sometimes uses U+2212 or U+2013 instead of ASCII "-").
+_UNICODE_DASHES = re.compile(r"[\u2010\u2011\u2012\u2013\u2014\u2212]")
+
+
+def _normalize_dashes_to_ascii(s: str) -> str:
+    """Map Unicode dash characters to ASCII hyphen so W-L regexes match."""
+    return _UNICODE_DASHES.sub("-", s)
+
+
+def _normalize_record_text(value: str) -> str:
+    """Extract a single W-L or W-L-T token from a label or banner fragment."""
+    if not value:
+        return ""
+    value = _normalize_dashes_to_ascii(value.strip())
+    collapsed = re.sub(r"\s*-\s*", "-", value)
+    match = re.search(r"\b\d+-\d+(?:-\d+)?\b", collapsed)
+    return match.group(0) if match else collapsed.strip()
+
+
+def _record_from_parens_in_text(text: str) -> str:
+    """Prefer end-anchored (banner); else last (W-L) in the string (trailing junk after parens)."""
+    text = _normalize_dashes_to_ascii(text)
+    m = _RECORD_SUFFIX_IN_PARENS.search(text)
+    if m:
+        return _normalize_record_text(m.group(1))
+    matches = list(_RECORD_IN_PARENS.finditer(text))
+    if matches:
+        return _normalize_record_text(matches[-1].group(1))
+    return ""
+
+
+def _is_overall_card_header_label(label: str) -> bool:
+    """True for 'Overall', 'Overall Record', etc."""
+    t = label.strip().lower()
+    if not t:
+        return False
+    if t in ("overall", "overall record"):
+        return True
+    return bool(re.match(r"^overall\s+record\b", t))
+
+
+def _extract_record_from_banner_card_header(soup: BeautifulSoup) -> str:
+    """
+    Overall record shown next to the team name in the top banner card-header
+    as 'School (3-4)' when the Overall summary card is missing or different markup.
+    """
+    for header in soup.find_all("div", class_="card-header"):
+        text = header.get_text(" ", strip=True)
+        if not text:
+            continue
+        rec = _record_from_parens_in_text(text)
+        if rec:
+            return rec
+
+    return ""
+
+
 def _extract_overall_record(soup: BeautifulSoup) -> str:
     """Extract overall record text from team summary cards/labels."""
-    def _normalize_record(value: str) -> str:
-        match = re.search(r"\b\d+-\d+(?:-\d+)?\b", value or "")
-        return match.group(0) if match else value.strip()
-
     # Current NCAA card layout: card-header "Overall" + card-body first <span>.
     for header in soup.find_all("div", class_="card-header"):
-        if header.get_text(" ", strip=True).lower() == "overall":
+        if _is_overall_card_header_label(header.get_text(" ", strip=True)):
             body = header.find_next_sibling("div", class_="card-body")
             if body:
                 span = body.find("span")
                 if span:
-                    return _normalize_record(span.get_text(" ", strip=True))
+                    got = _normalize_record_text(span.get_text(" ", strip=True))
+                    if got:
+                        return got
+                raw = body.get_text(" ", strip=True)
+                if raw:
+                    got = _normalize_record_text(raw)
+                    if got:
+                        return got
 
     # Common layout: <dt>Overall</dt><dd>10-2-3</dd>
     for dt in soup.find_all("dt"):
@@ -92,19 +162,19 @@ def _extract_overall_record(soup: BeautifulSoup) -> str:
         if "overall" in label and "record" in label:
             dd = dt.find_next_sibling("dd")
             if dd:
-                return _normalize_record(dd.get_text(" ", strip=True))
+                return _normalize_record_text(dd.get_text(" ", strip=True))
         elif label == "overall":
             dd = dt.find_next_sibling("dd")
             if dd:
-                return _normalize_record(dd.get_text(" ", strip=True))
+                return _normalize_record_text(dd.get_text(" ", strip=True))
 
     # Fallback: explicit "Overall Record" text in card details.
-    text = soup.get_text(" ", strip=True)
+    text = _normalize_dashes_to_ascii(soup.get_text(" ", strip=True))
     match = re.search(r"overall\s+record[:\s]+([0-9]+(?:-[0-9]+){1,2})", text, re.I)
     if match:
-        return _normalize_record(match.group(1).strip())
+        return _normalize_record_text(match.group(1).strip())
 
-    return ""
+    return _extract_record_from_banner_card_header(soup)
 
 
 def _short_name_from_header(header: Any) -> str:
@@ -118,12 +188,6 @@ def _short_name_from_header(header: Any) -> str:
     return alt
 
 
-# Banner line when NCAA still shows "School Mascot (W-L)" but removed ATHLETICS_URL / logo.
-_RECORD_SUFFIX_IN_PARENS = re.compile(
-    r"\s*\(\s*\d+\s*-\s*\d+(?:\s*-\s*\d+)?\s*\)\s*$"
-)
-
-
 def _team_name_from_banner_card_header(soup: BeautifulSoup) -> str:
     """
     Some team pages omit the athletics link and header logo; schedule logos are
@@ -134,8 +198,13 @@ def _team_name_from_banner_card_header(soup: BeautifulSoup) -> str:
         text = header.get_text(" ", strip=True)
         if not text:
             continue
+        text = _normalize_dashes_to_ascii(text)
         if _RECORD_SUFFIX_IN_PARENS.search(text):
             return _RECORD_SUFFIX_IN_PARENS.sub("", text).strip()
+        matches = list(_RECORD_IN_PARENS.finditer(text))
+        if matches:
+            last = matches[-1]
+            return (text[: last.start()] + text[last.end() :]).strip()
     return ""
 
 
