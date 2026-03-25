@@ -21,7 +21,7 @@ def fetch_team_page(session: requests.Session, team_id: str) -> str | None:
         team_id: NCAA team ID.
 
     Returns:
-        Raw HTML string, or None if the page returned HTTP 500 after one retry.
+        Raw HTML string, or None if the page returned HTTP 500/502 after one retry.
     """
     url = f"{TEAM_BASE_URL}{team_id}"
     return fetch_stats_page(session, url)

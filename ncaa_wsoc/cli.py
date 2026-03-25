@@ -15,11 +15,15 @@ from .http import ConsecutiveHttpFailures, create_session
 from .rankings import build_rankings_url, get_team_seed_entries_for_season
 from .storage import (
     SCORING_SUMMARY_DEFAULT,
+    SKIPPED_CONTESTS_DEFAULT,
     append_contest,
     append_scoring_rows,
+    append_skipped_contest_id,
     append_team,
     load_known_team_ids,
     load_scraped_contest_ids,
+    load_skipped_contest_ids,
+    remove_skipped_contest_id,
 )
 from .team import extract_contests, extract_team_metadata, fetch_team_page
 
@@ -167,10 +171,13 @@ def run_contest(
     out = Path(output_dir or ".")
     out.mkdir(parents=True, exist_ok=True)
     path = out / (scoring_csv or SCORING_SUMMARY_DEFAULT)
+    skip_list_path = out / SKIPPED_CONTESTS_DEFAULT
 
     seen_output: set[str] = set()
     if skip_existing:
         seen_output = load_scraped_contest_ids(path)
+
+    skipped_file_ids = load_skipped_contest_ids(skip_list_path)
 
     # Deduplicate while preserving order
     ordered: list[str] = []
@@ -189,6 +196,14 @@ def run_contest(
         if skipped:
             print(f"Skip {skipped} contest(s) already in {path}")
 
+    before_skip_file = len(ordered)
+    ordered = [c for c in ordered if c not in skipped_file_ids]
+    skipped_from_file = before_skip_file - len(ordered)
+    if skipped_from_file:
+        print(
+            f"Skip {skipped_from_file} contest(s) listed in {skip_list_path}"
+        )
+
     if limit is not None:
         ordered = ordered[:limit]
 
@@ -205,14 +220,17 @@ def run_contest(
             html = fetch_box_score_page(session, contest_id)
         except requests.RequestException as e:
             print(f"  Error fetching contest {contest_id}: {e}")
+            append_skipped_contest_id(contest_id, skip_list_path)
             continue
         if html is None:
+            append_skipped_contest_id(contest_id, skip_list_path)
             continue
 
         soup = BeautifulSoup(html, "html.parser")
         summary = extract_scoring_summary(soup)
         rows = _scoring_rows_flat(contest_id, summary)
         append_scoring_rows(rows, path)
+        remove_skipped_contest_id(contest_id, skip_list_path)
         done += 1
         print(f"  Contest {contest_id}: {len(summary.get('goals') or [])} goal row(s)")
 

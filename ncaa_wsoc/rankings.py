@@ -107,7 +107,7 @@ def fetch_rankings_page(
     resp1 = request_stats_get(session, entry_url, timeout=30)
     if resp1 is None:
         raise RuntimeError(
-            f"Could not fetch rankings entry page (HTTP 500 after retry): {entry_url}"
+            f"Could not fetch rankings entry page (HTTP 500/502 after retry): {entry_url}"
         )
 
     ranking_url = _extract_national_ranking_url(resp1.text, stat_seq)
@@ -119,7 +119,7 @@ def fetch_rankings_page(
     resp2 = request_stats_get(session, ranking_url, timeout=30)
     if resp2 is None:
         raise RuntimeError(
-            f"Could not fetch national rankings page (HTTP 500 after retry): {ranking_url}"
+            f"Could not fetch national rankings page (HTTP 500/502 after retry): {ranking_url}"
         )
     return resp2
 

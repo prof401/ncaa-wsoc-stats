@@ -19,6 +19,7 @@ TEAMS_COLUMNS = [
 CONTESTS_COLUMNS = ["contest_id", "team_id", "opponent_id", "result", "attendance", "date"]
 
 SCORING_SUMMARY_DEFAULT = "scoring_summary.csv"
+SKIPPED_CONTESTS_DEFAULT = "skipped_contests.txt"
 SCORING_SUMMARY_COLUMNS = [
     "contest_id",
     "away_team_id",
@@ -129,6 +130,58 @@ def append_contest(
     with open(path, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CONTESTS_COLUMNS, extrasaction="ignore")
         writer.writerow({k: row.get(k, "") for k in CONTESTS_COLUMNS})
+
+
+def load_skipped_contest_ids(skip_path: Path | str | None = None) -> set[str]:
+    """
+    contest_id values listed in skipped_contests.txt (one per line).
+
+    Used to avoid re-fetching contests that previously failed (HTTP errors, empty page).
+    """
+    path = Path(skip_path or SKIPPED_CONTESTS_DEFAULT)
+    if not path.exists():
+        return set()
+
+    out: set[str] = set()
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            out.add(s)
+    return out
+
+
+def append_skipped_contest_id(
+    contest_id: str, skip_path: Path | str | None = None
+) -> None:
+    """Append one contest_id to the skip list (creates file if missing)."""
+    path = Path(skip_path or SKIPPED_CONTESTS_DEFAULT)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cid = contest_id.strip()
+    if not cid:
+        return
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(cid + "\n")
+
+
+def remove_skipped_contest_id(
+    contest_id: str, skip_path: Path | str | None = None
+) -> None:
+    """Remove contest_id from the skip list if present (e.g. after a successful scrape)."""
+    path = Path(skip_path or SKIPPED_CONTESTS_DEFAULT)
+    if not path.exists():
+        return
+    cid = contest_id.strip()
+    if not cid:
+        return
+    with open(path, encoding="utf-8") as f:
+        lines = f.readlines()
+    kept = [ln for ln in lines if ln.strip() != cid]
+    if len(kept) == len(lines):
+        return
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(kept)
 
 
 def load_scraped_contest_ids(scoring_path: Path | str | None = None) -> set[str]:

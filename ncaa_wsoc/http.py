@@ -3,19 +3,22 @@
 import re
 import sys
 import time
+from collections.abc import Callable
 
 import requests
 from curl_cffi.requests import Session as CurlSession
+from curl_cffi.requests.exceptions import Timeout as CurlTimeout
 
 _INTERSTITIAL_SIGNAL = "/_sec/verify?provider=interstitial"
 _VERIFY_URL = "https://stats.ncaa.org/_sec/verify?provider=interstitial"
 
-# Abort after this many consecutive URLs that return HTTP 500 (after one retry each).
+# Abort after this many consecutive URLs that return these codes (after one retry each).
+_STATS_RETRY_STATUS_CODES = frozenset({500, 502})
 STATS_CONSECUTIVE_FAILURE_ABORT = 4
 
 
 class ConsecutiveHttpFailures(Exception):
-    """Raised when too many consecutive stats.ncaa.org requests fail with HTTP 500."""
+    """Raised when too many consecutive stats.ncaa.org requests fail with HTTP 500/502."""
 
 
 class _ConsecutiveFailureTracker:
@@ -31,7 +34,7 @@ class _ConsecutiveFailureTracker:
         if self.count >= self.abort_at:
             raise ConsecutiveHttpFailures(
                 f"Aborting: {self.count} consecutive stats.ncaa.org URLs returned "
-                f"HTTP 500 after one retry each (limit {self.abort_at})."
+                f"HTTP 500/502 after one retry each (limit {self.abort_at})."
             )
 
 
@@ -41,23 +44,35 @@ def _tracker(session: requests.Session) -> _ConsecutiveFailureTracker:
     return session._ncaa_stats_failure_tracker  # type: ignore[attr-defined]
 
 
+_TIMEOUT_EXCEPTIONS = (requests.exceptions.Timeout, CurlTimeout)
+
+
+def _retry_once_on_timeout(call: Callable[[], requests.Response]) -> requests.Response:
+    """Run ``call()``; on timeout, run once more, then re-raise."""
+    try:
+        return call()
+    except _TIMEOUT_EXCEPTIONS:
+        return call()
+
+
 def request_stats_get(
     session: requests.Session, url: str, timeout: float = 30
 ) -> requests.Response | None:
     """
-    GET a URL on stats.ncaa.org. On HTTP 500, retry once; if still 500, log, count
-    toward consecutive failures, and return None. Other status codes use raise_for_status.
+    GET a URL on stats.ncaa.org. On timeout, retry once. On HTTP 500 or 502, retry once;
+    if still 500/502, log, count toward consecutive failures, and return None.
+    Other status codes use raise_for_status.
     """
     tracker = _tracker(session)
     resp: requests.Response | None = None
     for _ in range(2):
-        resp = session.get(url, timeout=timeout)
-        if resp.status_code != 500:
+        resp = _retry_once_on_timeout(lambda: session.get(url, timeout=timeout))
+        if resp.status_code not in _STATS_RETRY_STATUS_CODES:
             break
     assert resp is not None
-    if resp.status_code == 500:
+    if resp.status_code in _STATS_RETRY_STATUS_CODES:
         print(
-            f"HTTP 500 from stats.ncaa.org after retry, skipping: {url}",
+            f"HTTP {resp.status_code} from stats.ncaa.org after retry, skipping: {url}",
             file=sys.stderr,
         )
         tracker.record_failure()
@@ -92,19 +107,21 @@ def _solve_interstitial(session: requests.Session, html: str, page_url: str) -> 
     try:
         resp: requests.Response | None = None
         for _ in range(2):
-            resp = session.post(
-                _VERIFY_URL,
-                json={"bm-verify": token, "pow": pow_val},
-                headers={"Content-Type": "application/json", "Referer": page_url},
-                timeout=15,
+            resp = _retry_once_on_timeout(
+                lambda: session.post(
+                    _VERIFY_URL,
+                    json={"bm-verify": token, "pow": pow_val},
+                    headers={"Content-Type": "application/json", "Referer": page_url},
+                    timeout=15,
+                )
             )
-            if resp.status_code != 500:
+            if resp.status_code not in _STATS_RETRY_STATUS_CODES:
                 break
         assert resp is not None
-        if resp.status_code == 500:
+        if resp.status_code in _STATS_RETRY_STATUS_CODES:
             print(
-                f"HTTP 500 from stats.ncaa.org verify POST after retry, skipping: "
-                f"{page_url}",
+                f"HTTP {resp.status_code} from stats.ncaa.org verify POST after retry, "
+                f"skipping: {page_url}",
                 file=sys.stderr,
             )
             tracker.record_failure()
@@ -123,7 +140,8 @@ def fetch_stats_page(session: requests.Session, url: str, timeout: float = 30) -
     """
     GET a stats.ncaa.org HTML page, solving Akamai interstitial if encountered.
 
-    On persistent HTTP 500 (after one retry), logs and returns None.
+    On persistent HTTP 500/502 (after one retry), logs and returns None. On timeout,
+    ``request_stats_get`` retries once then may raise.
     Use for team pages, box scores, and other pages behind the same protection.
     """
     resp = request_stats_get(session, url, timeout=timeout)

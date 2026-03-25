@@ -21,7 +21,7 @@ _DATETIME_TD = re.compile(
 
 
 def fetch_box_score_page(session: requests.Session, contest_id: str) -> str | None:
-    """Fetch raw HTML for the box score page, or None on HTTP 500 after one retry."""
+    """Fetch raw HTML for the box score page, or None on HTTP 500/502 after one retry."""
     url = BOX_SCORE_URL.format(contest_id=contest_id)
     return fetch_stats_page(session, url)
 
